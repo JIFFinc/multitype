@@ -1,6 +1,6 @@
 # Multitype
 
-TODO: Write a gem description
+Allows for variable methods and attributes on models and classes to help differentiate different types of calculations for similar data structures seamlessly.
 
 ## Installation
 
@@ -18,12 +18,15 @@ Or install it yourself as:
 
 ## Usage
 
-TODO: Write usage instructions here
+Please refer to the specs and the "FakeModel" for basic usage.
+
+- [FakeModel](http://github.com/JIFFinc/multitype/blob/master/spec/support/fake_model.rb)
+- [Spec](http://github.com/JIFFinc/multitype/blob/master/spec/tests/multitype_spec.rb)
 
 ## Contributing
 
 1. Fork it
-2. Create your feature branch (`git checkout -b my-new-feature`)
+2. Create your feature branch (`git checkout -b feature/my-new-feature`)
 3. Commit your changes (`git commit -am 'Add some feature'`)
-4. Push to the branch (`git push origin my-new-feature`)
+4. Push to the branch (`git push origin feature/my-new-feature`)
 5. Create new Pull Request

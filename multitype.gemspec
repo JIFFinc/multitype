@@ -10,10 +10,10 @@ Gem::Specification.new do |spec|
   spec.email         = ["kellylsbkr@gmail.com"]
   spec.description   = %q{Allows for dynamic methods and data dependent on the data on a classes instance attributes}
   spec.summary       = %q{Add dynamic methods for ruby classes}
-  spec.homepage      = ""
+  spec.homepage      = "http://github.com/JIFFinc/multitype"
 
   # Determine the proper license for this code
-  # spec.license       = "MIT"
+  spec.license       = "MIT"
 
   spec.files         = `git ls-files`.split($/)
   spec.executables   = spec.files.grep(%r{^bin/}) { |f| File.basename(f) }
