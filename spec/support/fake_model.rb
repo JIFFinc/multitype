@@ -1,7 +1,7 @@
 class FakeModel
   include Multitype
 
-  def initialize(compare)
+  def initialize(compare = nil)
     @compare = compare
   end
 
@@ -23,11 +23,25 @@ class FakeModel
     end
   end
 
-  def run_type
+  deftype :general, 'APrefined', class: ATypeSet
+  deftype :general, 'BPrefined', class: BTypeSet
+
+  deftype :override, 'Prefined', class: BTypeSet
+  deftype :override, 'Prefined', class: ATypeSet
+
+  def math_run
     math.run(5, 2)
   end
 
-  def run_message
+  def math_message
     math.message
+  end
+
+  def general_run
+    general.run
+  end
+
+  def override_run
+    override.run
   end
 end

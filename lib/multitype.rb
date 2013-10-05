@@ -1,6 +1,5 @@
-require "multitype/version"
-require "awesome_print"
 require "active_support/core_ext/class/attribute"
+require "multitype/version"
 
 module Multitype
   def self.included(base)
@@ -42,15 +41,23 @@ module Multitype
       # Create class attribute hashes
       if ! self.respond_to?("#{type}_types_by_name")
         class_attribute "#{type}_types_by_name".to_sym,
-                                  "#{type}_types_by_trigger".to_sym
+                        "#{type}_types_by_trigger".to_sym
 
         self.send("#{type}_types_by_name=", {})
         self.send("#{type}_types_by_trigger=", {})
       end
 
+      # Create type dependents array
+      type_dependents(type)
+
       # Get the name of the class to define
-      type_class = if ! "#{args[:class]}".empty? && args[:class].includes?('::')
-        klass = get_const(args[:class])
+      type_class = if args[:class]
+        klass = if args[:class].is_a?(String)
+          get_const(args[:class])
+        else
+          args[:class]
+        end
+
         klass.is_a?(Class) ? klass : Object
       else
         Object
@@ -58,21 +65,21 @@ module Multitype
 
       # Define the class with the methods within
       object = Class.new(type_class)
-      object.class_exec(parent, &block)
+      object.class_exec(parent, &block) if block_given?
 
       # Instantiate the object
       object = object.new
+
+      # Make the variables passed accessable
       object.class.__send__(:attr_accessor, *accessable)
 
       # Set the instance variables
-      object.type = type
-      object.name = name
       args.each { |key, val| object.__send__("#{key}=", val) }
 
       # Add the type to the class attribute hash
       # Duplicate so subclasses dont alter parent
       types = self.__send__("#{type}_types_by_name").dup
-      types[name] = object
+      types[name.to_sym] = object
       self.__send__("#{type}_types_by_name=", types)
 
       # Add the triggers to the class attribute hash
