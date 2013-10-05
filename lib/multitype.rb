@@ -1,56 +1,84 @@
 require "active_support/core_ext/class/attribute"
 require "multitype/version"
+require "awesome_print"
 
 module Multitype
+
+  class NoTypeError < NoMethodError; end
+  class NoTypeCatError < NoTypeError; end
+  class NoTypeSetError < NoTypeError; end
+
   def self.included(base)
     base.extend(ClassMethods)
   end
 
+  # Return the multitype data from the cache
+  [:comparators, :typesets].each do |method|
+    __send__(:define_method, "get_multitype_#{method}") do |type|
+      __get_multitype_cache__(type, method)
+    end
+  end
+
+  # Forward this method to the class method
+  def __get_multitype_cache__(*args)
+    self.class.__get_multitype_cache__(*args)
+  end
+
   module ClassMethods
-    def type_dependents(type, *columns)
-      __send__(:attr_accessor, *columns)
 
-      # Create class attribute for storing dependent info
-      if ! self.respond_to?("#{type}_type_dependents")
-        class_attribute "#{type}_type_dependents"
-        self.__send__("#{type}_type_dependents=", [])
+    def type_comparator(type, *comparators)
+      __send__(:attr_accessor, *comparators)
+      __create_multitype_datastore__
+
+      # Get the type name if a typeset is passed as an object
+      type = type.type if type.is_a?(Object) && type.respond_to?(:__multitype_typeset__)
+
+      # Append to the list comparator columns
+      __update_multitype_cache__(type, :comparators, comparators)
+    end
+
+    def type_alias(type, *aliases)
+      __create_multitype_datastore__
+
+      # Get the type name if a typeset is passed as an object
+      type = type.type if type.is_a?(Object) && type.respond_to?(:__multitype_typeset__)
+      raise NoTypeError, type.to_s unless __get_multitype_cache__(type)
+
+      aliases.each do |_alias|
+        alias_method _alias, type
       end
+    end
 
-      # Append to the list of columsn to check for when
-      # accessing a type by its attribute name
-      dependents = self.__send__("#{type}_type_dependents")
-      dependents.concat(columns)
-      self.__send__("#{type}_type_dependents=", dependents)
-      dependents
+    def type_accessor(type, *columns)
+      __create_multitype_datastore__
+
+      # Add accessors to the typeset that is passed or any typesets matching type
+      if type.is_a?(Object) && type.respond_to?(:__multitype_typeset__)
+        type.class.__send__(:attr_accessor, *columns)
+      else
+        raise NoTypeError, type.to_s unless __get_multitype_cache__(type)
+        raise NoTypeSetError, type.to_s unless __get_multitype_cache__(type, :typesets)
+        __get_multitype_cache__(type, :typesets).each do |name, typeset|
+          typeset.class.attr_accessor(*columns)
+        end
+      end
     end
 
     def deftype(type, name, args = {}, &block)
+      __create_multitype_datastore__
+      type = type.to_sym
+      name = name.to_sym
 
-      # Merge in name and type for accessable
-      args.merge!(:type => type, :name => name)
-
-      # Delete triggers unless they are in array format
-      args.delete(:triggers) if ! args[:triggers].is_a?(Array)
+      # Merge in name, type and model for accessable access
+      args.merge!(type: type, name: name, model: self)
 
       # Get the list of accessable keys we need
       accessable = args.keys.map(&:to_sym)
 
-      # Save for use in the typeclass
-      parent = self
+      # Kickstart the type comparators
+      type_comparator(type)
 
-      # Create class attribute hashes
-      if ! self.respond_to?("#{type}_types_by_name")
-        class_attribute "#{type}_types_by_name".to_sym,
-                        "#{type}_types_by_trigger".to_sym
-
-        self.send("#{type}_types_by_name=", {})
-        self.send("#{type}_types_by_trigger=", {})
-      end
-
-      # Create type dependents array
-      type_dependents(type)
-
-      # Get the name of the class to define
+      # Get the name of the class to extend if it exists
       type_class = if args[:class]
         klass = if args[:class].is_a?(String)
           get_const(args[:class])
@@ -58,77 +86,155 @@ module Multitype
           args[:class]
         end
 
-        klass.is_a?(Class) ? klass : Object
+        klass.is_a?(Object) ? klass : Object
       else
         Object
       end
 
-      # Define the class with the methods within
+      # Define the class and mark as a typeset
       object = Class.new(type_class)
-      object.class_exec(parent, &block) if block_given?
+      object.class_attribute :__multitype_typeset__
+      object.__multitype_typeset__ = true
+
+      # Execute the passed block as if it was class level code
+      object.class_exec(&block) if block_given?
 
       # Instantiate the object
       object = object.new
 
       # Make the variables passed accessable
-      object.class.__send__(:attr_accessor, *accessable)
+      type_accessor(object, *accessable)
 
-      # Set the instance variables
+      # Set the instance attributes that were passed in
       args.each { |key, val| object.__send__("#{key}=", val) }
 
-      # Add the type to the class attribute hash
-      # Duplicate so subclasses dont alter parent
-      types = self.__send__("#{type}_types_by_name").dup
-      types[name.to_sym] = object
-      self.__send__("#{type}_types_by_name=", types)
-
-      # Add the triggers to the class attribute hash
-      if object.respond_to?(:triggers)
-        triggers = self.__send__("#{type}_types_by_trigger")
-
-        object.triggers.each do
-          triggers[trigger] ||= []
-          triggers[trigger]  << type
-        end
-
-        self.__send__("#{type}_types_by_trigger=", triggers)
-      end
+      # Add the type to the multitype cache
+      __update_multitype_cache__(type, :typesets, {name => object})
 
       # Create the accessor method if it does not exist
-      if ! self.respond_to?(type)
+      unless self.respond_to?(type)
         self.__send__(:define_method, type) do
-          use_object = nil # Object to return
+          use_typeset = nil # Object to return
 
           # Loop through the types to find the one to use
-          self.__send__("#{type}_types_by_name").each do |name, obj|
+          __get_multitype_cache__(type, :typesets).each do |name, typeset|
             match = true # Did we find a match
 
-            # Loop through the type dependent attributes
-            self.__send__("#{type}_type_dependents").each do |dep|
+            # Loop through the type comparators to find a match
+            __get_multitype_cache__(type, :comparators).each do |comparator|
 
-              match = if obj.respond_to?(dep) && self.respond_to?(dep)
-                obj.__send__(dep) == self.__send__(dep)
+              # Check the comparator for a match
+              match = if typeset.respond_to?(comparator) && self.respond_to?(comparator)
+                typeset.__send__(comparator) == self.__send__(comparator)
               else
                 false
               end
 
-              # If we fail on a match stop looping
+              # If we fail at least one
+              # match then break the loop
               break unless match
             end
 
-            # If we found a match use it
+            # If we have a match,
+            # stop looking for one
             if match
-              use_object = obj
+              use_typeset = typeset
               break
             end
           end
 
-          # Return the type or nil
-          use_object
+          # Return the typeset
+          use_typeset
         end
       end
 
       object
+    end
+
+    def __get_multitype_cache__(type = nil, cat = nil, klass = self.name.to_sym, depth = 0)
+      type = type.to_sym if type
+      cat  = cat.to_sym  if cat
+
+      # If the klass is not cached just return nil
+      return nil unless __multitype_cache__[klass]
+
+      # Return the level of data requested
+      result = if type.nil? && cat.nil?
+        __multitype_cache__[klass]
+      elsif cat.nil? && __multitype_cache__[klass]
+        __multitype_cache__[klass][type]
+      elsif __multitype_cache__[klass] && __multitype_cache__[klass][type]
+        __multitype_cache__[klass][type][cat]
+      else
+        nil
+      end
+
+      # Don't loop through ancestors on lower objects
+      return result if depth > 0
+
+      # Iterate over ancestors to use their typesets
+      ancestors.inject(result) do |out, ancestor|
+        ancestor = ancestor.name.to_sym
+
+        # Skip if ancestor is self or Multitype
+        if ancestor == klass || ancestor == 'Multitype'
+          out
+        else
+
+          # Get data lower down the ancestry tree
+          merge_in = __get_multitype_cache__(type, cat, ancestor, depth + 1)
+
+          # Merge in data as required
+          if out.nil? && ! merge_in.nil?
+            merge_in
+          else
+            if merge_in.is_a?(Array)
+              out.concat(merge_in)
+            elsif merge_in.is_a?(Hash)
+              out.merge(merge_in)
+            else
+              out
+            end
+          end
+        end
+      end
+    end
+
+    private
+
+    def __update_multitype_cache__(type, cat, data)
+      klass = self.name.to_sym
+      type  = type.to_sym
+      cat   = cat.to_sym
+
+      # Create the hashes if they don't exist
+      __multitype_cache__[klass] ||= {}
+      __multitype_cache__[klass][type] ||= {}
+      __multitype_cache__[klass][type][cat] ||= data
+
+      # Merge in the data for hashes
+      if data.is_a?(Hash)
+        data = __multitype_cache__[klass][type][cat].merge(data)
+        __multitype_cache__[klass][type][cat] = data
+      end
+
+      # Concatanate the data for arrays
+      if data.is_a?(Array)
+        data = __multitype_cache__[klass][type][cat].concat(data).uniq
+        __multitype_cache__[klass][type][cat] =  data
+      end
+
+      __multitype_cache__[klass]
+    end
+
+    def __create_multitype_datastore__
+      if ! self.respond_to?(:__multitype_cache__)
+        class_attribute :__multitype_cache__
+        self.__send__(:__multitype_cache__=, {})
+        true
+      else
+        false
+      end
     end
   end
 end
