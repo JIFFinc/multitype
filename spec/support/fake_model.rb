@@ -23,6 +23,20 @@ class FakeModel
     end
   end
 
+  type_comparator :apple, compare: :title
+
+  deftype :apple, 'Testing Hash Comparator 1', title: :tree do
+    def run
+      :tree
+    end
+  end
+
+  deftype :apple, 'Testing Hash Comparator 2', title: :pie do
+    def run
+      :pie
+    end
+  end
+
   deftype :general, 'APrefined', class: ATypeSet
   deftype :general, 'BPrefined', class: BTypeSet
 

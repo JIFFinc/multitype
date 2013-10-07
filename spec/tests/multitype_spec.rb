@@ -36,6 +36,16 @@ describe "Test the multitype with FakeModel" do
     result = FakeModel.new.override.run()
     result.should == :works
   end
+
+  it "Should use a hash for comparing multiple typesets 1" do
+    result = FakeModel.new(:tree).apple.run()
+    result.should == :tree
+  end
+
+  it "Should use a hash for comparing multiple typesets 2" do
+    result = FakeModel.new(:pie).apple.run()
+    result.should == :pie
+  end
 end
 
 describe "Test the multitype with FakeModel2 (inherits FakeModel)" do

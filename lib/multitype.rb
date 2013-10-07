@@ -27,14 +27,22 @@ module Multitype
   module ClassMethods
 
     def type_comparator(type, *comparators)
-      __send__(:attr_accessor, *comparators)
+      new_comparators = comparators.inject({}) do |out, comparator|
+        if comparator.is_a?(Hash)
+          out.merge(comparator)
+        else
+          out.merge({comparator => comparator})
+        end
+      end
+
+      __send__(:attr_accessor, *new_comparators.keys)
       __create_multitype_datastore__
 
       # Get the type name if a typeset is passed as an object
       type = type.type if type.is_a?(Object) && type.respond_to?(:__multitype_typeset__)
 
       # Append to the list comparator columns
-      __update_multitype_cache__(type, :comparators, comparators)
+      __update_multitype_cache__(type, :comparators, new_comparators)
     end
 
     def type_alias(type, *aliases)
@@ -121,11 +129,11 @@ module Multitype
             match = true # Did we find a match
 
             # Loop through the type comparators to find a match
-            __get_multitype_cache__(type, :comparators).each do |comparator|
+            __get_multitype_cache__(type, :comparators).each do |model_comparator, typeset_comparator|
 
               # Check the comparator for a match
-              match = if typeset.respond_to?(comparator) && self.respond_to?(comparator)
-                typeset.__send__(comparator) == self.__send__(comparator)
+              match = if typeset.respond_to?(typeset_comparator) && self.respond_to?(model_comparator)
+                typeset.__send__(typeset_comparator) == self.__send__(model_comparator)
               else
                 false
               end
