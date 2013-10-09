@@ -1,6 +1,6 @@
 # Multitype
 
-[CircleCI Build Status](https://circleci.com/gh/JIFFinc/multitype.png)
+![CircleCI Build Status](https://circleci.com/gh/JIFFinc/multitype.png)
 
 Allows for variable methods and attributes on models and classes to help differentiate different types of calculations for similar data structures seamlessly.
 
